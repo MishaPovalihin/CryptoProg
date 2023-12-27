@@ -1,81 +1,72 @@
 #include <iostream>
 #include <fstream>
-#include <cryptopp/aes.h>
-#include <cryptopp/ccm.h>
-#include <cryptopp/filters.h>
-#include <cryptopp/files.h>
-#include <cryptopp/modes.h>
-#include <cryptopp/secblock.h>
+#include <string>
 #include <cryptopp/cryptlib.h>
-#include <cryptopp/osrng.h>
 #include <cryptopp/hex.h>
-#include <cryptopp/md5.h>
+#include <cryptopp/files.h>
+#include <cryptopp/aes.h>
+#include <cryptopp/modes.h>
+#include <cryptopp/sha.h>
+#include <cryptopp/pwdbased.h> 
 
 using namespace CryptoPP;
 
-void DeriveKey(const std::string& password, SecByteBlock& derivedKey, SecByteBlock& iv) {
-    const int KEY_SIZE = AES::DEFAULT_KEYLENGTH;
-    const int IV_SIZE = AES::BLOCKSIZE;
 
-    // Create MD5 hash from password
-    MD5 hash;
-    SecByteBlock digest(hash.DigestSize());
-    hash.Update((const byte*)password.data(), password.size());
-    hash.Final(digest);
+void encrypt(const std::string& inputFile, const std::string& outputFile, const std::string& password) {
+    // Создаем блок байтов для ключа шифрования
+    SecByteBlock key(AES::DEFAULT_KEYLENGTH); //DEFAULT_KEYLENGTH обычно 16 байт 
 
-    // Derive key and IV
-    std::memcpy(derivedKey, digest, KEY_SIZE);
-    std::memcpy(iv, digest + KEY_SIZE, IV_SIZE);
+    // Создаем объект PBKDF2 для выработки ключа из пароля
+    PKCS12_PBKDF<SHA256> pbkdf;
+    pbkdf.DeriveKey(key, key.size(), 0, (byte*)password.data(), password.size(), NULL, 0, 1024, 0.0f);
+
+    // Создаем вектор инициализации
+    byte iv[AES::BLOCKSIZE];
+    memset(iv, 0x00, AES::BLOCKSIZE); //BLOCKSIZE обычно 16 байт
+
+    // Шифруем файл
+    CBC_Mode<AES>::Encryption enc(key, key.size(), iv);
+    FileSource fs(inputFile.c_str(), true, 
+                  new StreamTransformationFilter(enc, 
+                  new FileSink(outputFile.c_str())));
 }
 
-void EncryptFile(const std::string& inputFile, const std::string& outputFile, const std::string& password) {
+
+void decrypt(const std::string& inputFile, const std::string& outputFile, const std::string& password) {
+    // Создаем блок байтов для ключа шифрования
     SecByteBlock key(AES::DEFAULT_KEYLENGTH);
-    SecByteBlock iv(AES::BLOCKSIZE);
 
-    DeriveKey(password, key, iv);
+    // Создаем объект PBKDF2 для выработки ключа из пароля
+    PKCS12_PBKDF<SHA256> pbkdf;
+    pbkdf.DeriveKey(key, key.size(), 0, (byte*)password.data(), password.size(), NULL, 0, 1024, 0.0f);
 
-    CBC_Mode<AES>::Encryption encryption;
-    encryption.SetKeyWithIV(key, key.size(), iv);
+    // Создаем вектор инициализации
+    byte iv[AES::BLOCKSIZE];	
+    memset(iv, 0x00, AES::BLOCKSIZE);
 
-    FileSource fs(inputFile.c_str(), true, new StreamTransformationFilter(encryption, new FileSink(outputFile.c_str())));
-}
-
-void DecryptFile(const std::string& inputFile, const std::string& outputFile, const std::string& password) {
-    SecByteBlock key(AES::DEFAULT_KEYLENGTH);
-    SecByteBlock iv(AES::BLOCKSIZE);
-
-    DeriveKey(password, key, iv);
-
-    CBC_Mode<AES>::Decryption decryption;
-    decryption.SetKeyWithIV(key, key.size(), iv);
-
-    FileSource fs(inputFile.c_str(), true, new StreamTransformationFilter(decryption, new FileSink(outputFile.c_str())));
+    // Расшифровываем файл
+    CBC_Mode<AES>::Decryption dec(key, key.size(), iv);
+    FileSource fs(inputFile.c_str(), true, 
+                  new StreamTransformationFilter(dec, 
+                  new FileSink(outputFile.c_str())));
 }
 
 int main() {
-    int choice;
-    std::string inputFile, outputFile, password;
-
-    std::cout << "Enter 1 for encryption or 2 for decryption: ";
-    std::cin >> choice;
-
-    std::cout << "Enter input file path: ";
+    std::string mode, inputFile, outputFile, password;
+    std::cout << "Введите режим работы (e(ncrypt)/d(ecrypt)): ";
+    std::cin >> mode;
+    std::cout << "Введите путь к входному файлу: ";
     std::cin >> inputFile;
-
-    std::cout << "Enter output file path: ";
+    std::cout << "Введите путь к выходному файлу: ";
     std::cin >> outputFile;
-
-    std::cout << "Enter password: ";
+    std::cout << "Введите пароль: ";
     std::cin >> password;
-
-    if (choice == 1) {
-        EncryptFile(inputFile, outputFile, password);
-        std::cout << "File encrypted successfully!" << std::endl;
-    } else if (choice == 2) {
-        DecryptFile(inputFile, outputFile, password);
-        std::cout << "File decrypted successfully!" << std::endl;
+    if (mode == "e") {
+        encrypt(inputFile, outputFile, password);
+    } else if (mode == "d") {
+        decrypt(inputFile, outputFile, password);
     } else {
-        std::cout << "Invalid choice. Please enter 1 or 2." << std::endl;
+        std::cout << "Неверный режим" << std::endl;
     }
 
     return 0;
