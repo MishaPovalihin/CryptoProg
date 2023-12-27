@@ -1,22 +1,27 @@
-.PHONY: all debug release clean
+.PHONY: all clean format
 
-RELEASE_FLAGS = -O2 -Wall -DNDEBUG
-DEBUG_FLAGS   = -g -O0 -Wall
-RELEASE_EXEC  = task1
-DEBUG_EXEC    = main-dbg
-SOURCE        = main.cpp
+PROJECT = cipher_aes
 
-all: debug release
+CXX=g++
+CXXFLAGS=-O2 -Wall -DNDEBUG -std=c++17
+LDFLAGS= -l crypto++
 
-debug: $(DEBUG_EXEC)
+SOURCES := $(wildcard *.cpp)
+HEADERS := $(wildcard *.h)
+OBJECTS := $(SOURCES:%.cpp=%.o)
 
-$(DEBUG_EXEC): main.cpp
-	g++ $(DEBUG_FLAGS) main.cpp -o $(DEBUG_EXEC) -lcryptopp
+all : $(PROJECT)
 
-release: $(RELEASE_EXEC)
+$(PROJECT) : $(OBJECTS)
+	$(CXX) $^ $(LDFLAGS) -o $@
 
-$(RELEASE_EXEC): main.cpp
-	g++ $(RELEASE_FLAGS) main.cpp -o $(RELEASE_EXEC) -lcryptopp
+%.o : %.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
 
+$(OBJECTS) : $(HEADERS)
+
+format:
+	astyle *.cpp *.h
+	
 clean:
-	rm -f $(RELEASE_EXEC) $(DEBUG_EXEC)
+	rm -f $(PROJECT) *.o *.orig
