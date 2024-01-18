@@ -7,14 +7,14 @@
 #include <cryptopp/aes.h>
 #include <cryptopp/modes.h>
 #include <cryptopp/sha.h>
-#include <cryptopp/pwdbased.h> 
+#include <cryptopp/pwdbased.h>
+#include <cryptopp/osrng.h>
 
 using namespace CryptoPP;
 
-
 void encrypt(const std::string& inputFile, const std::string& outputFile, const std::string& password) {
     // Создаем блок байтов для ключа шифрования
-    SecByteBlock key(AES::DEFAULT_KEYLENGTH); //DEFAULT_KEYLENGTH обычно 16 байт 
+    SecByteBlock key(AES::DEFAULT_KEYLENGTH);
 
     // Создаем объект PBKDF2 для выработки ключа из пароля
     PKCS12_PBKDF<SHA256> pbkdf;
@@ -22,15 +22,19 @@ void encrypt(const std::string& inputFile, const std::string& outputFile, const 
 
     // Создаем вектор инициализации
     byte iv[AES::BLOCKSIZE];
-    memset(iv, 0x00, AES::BLOCKSIZE); //BLOCKSIZE обычно 16 байт
+    AutoSeededRandomPool prng; // Создаем генератор случайных чисел
+    prng.GenerateBlock(iv, sizeof(iv)); // Заполняем вектор инициализации случайными числами
+
+    // Записываем IV в начало выходного файла
+    std::ofstream out(outputFile.c_str(), std::ios::binary);
+    out.write((char*)iv, sizeof(iv));
 
     // Шифруем файл
     CBC_Mode<AES>::Encryption enc(key, key.size(), iv);
     FileSource fs(inputFile.c_str(), true, 
                   new StreamTransformationFilter(enc, 
-                  new FileSink(outputFile.c_str())));
+                  new FileSink(out)));
 }
-
 
 void decrypt(const std::string& inputFile, const std::string& outputFile, const std::string& password) {
     // Создаем блок байтов для ключа шифрования
@@ -40,13 +44,14 @@ void decrypt(const std::string& inputFile, const std::string& outputFile, const 
     PKCS12_PBKDF<SHA256> pbkdf;
     pbkdf.DeriveKey(key, key.size(), 0, (byte*)password.data(), password.size(), NULL, 0, 1024, 0.0f);
 
-    // Создаем вектор инициализации
-    byte iv[AES::BLOCKSIZE];	
-    memset(iv, 0x00, AES::BLOCKSIZE);
+    // Читаем IV из начала входного файла
+    std::ifstream in(inputFile.c_str(), std::ios::binary);
+    byte iv[AES::BLOCKSIZE];
+    in.read((char*)iv, sizeof(iv));
 
     // Расшифровываем файл
     CBC_Mode<AES>::Decryption dec(key, key.size(), iv);
-    FileSource fs(inputFile.c_str(), true, 
+    FileSource fs(in, true, 
                   new StreamTransformationFilter(dec, 
                   new FileSink(outputFile.c_str())));
 }
